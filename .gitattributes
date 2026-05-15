@@ -1,0 +1,2 @@
+*.zip filter=lfs diff=lfs merge=lfs -text
+C:/Users/DUROV/Desktop/Rich-Modern-sources.zip filter=lfs diff=lfs merge=lfs -text
