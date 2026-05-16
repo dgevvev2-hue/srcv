@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Импорт аккаунта в браузер</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+        }
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .service-selector {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .service-btn {
+            padding: 15px 35px;
+            border: 3px solid #ddd;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+            background: #f8f9fa;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .service-btn:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        .service-btn.active {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        .service-btn .service-icon {
+            font-size: 24px;
+        }
+        .step {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .step-number {
+            background: #667eea;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            margin: 10px 0;
+            resize: vertical;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .success {
+            background: #10b981;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            display: none;
+        }
+        .error {
+            background: #ef4444;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            display: none;
+        }
+        .info {
+            background: #3b82f6;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        code {
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        .file-input {
+            margin: 15px 0;
+        }
+        .file-input input[type="file"] {
+            display: none;
+        }
+        .file-label {
+            background: #10b981;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+        .file-label:hover {
+            background: #059669;
+            transform: translateY(-2px);
+        }
+        .filename {
+            margin-left: 15px;
+            color: #666;
+            font-style: italic;
+        }
+        .service-name {
+            font-weight: bold;
+            color: #667eea;
+        }
+        .detected-badge {
+            display: inline-block;
+            background: #10b981;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-left: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Импорт аккаунта в браузер</h1>
+        <p class="subtitle">Быстрый вход в аккаунт через cookies и localStorage</p>
+
+        <div class="step">
+            <span class="step-number">0</span>
+            <strong>Выберите сервис</strong>
+            <div class="service-selector">
+                <div class="service-btn active" onclick="selectService('devin')" id="btn-devin">
+                    <span class="service-icon">🤖</span>
+                    <span>Devin.ai</span>
+                </div>
+                <div class="service-btn" onclick="selectService('windsurf')" id="btn-windsurf">
+                    <span class="service-icon">🏄</span>
+                    <span>WindSurf</span>
+                </div>
+            </div>
+            <span class="detected-badge" id="detectedBadge">Авто-определено</span>
+        </div>
+
+        <div class="info">
+            <strong>Инструкция:</strong> Загрузите JSON файл сессии и нажмите кнопки для импорта.
+            <br>Поддерживаемые сервисы: <strong>Devin.ai</strong> и <strong>WindSurf (Codeium)</strong>
+        </div>
+
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Загрузите файл сессии</strong>
+            <div class="file-input">
+                <label for="sessionFile" class="file-label">Выбрать файл</label>
+                <input type="file" id="sessionFile" accept=".json">
+                <span class="filename" id="filename">Файл не выбран</span>
+            </div>
+        </div>
+
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Импортируйте Cookies</strong>
+            <p>Установите расширение <a href="https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm" target="_blank">Cookie-Editor</a>, затем:</p>
+            <textarea id="cookiesOutput" placeholder="Cookies появятся здесь после загрузки файла..." readonly></textarea>
+            <button onclick="copyCookies()">Копировать Cookies</button>
+            <button onclick="openServiceSite()" style="background: #10b981;" id="btnOpenSite">Открыть Devin.ai</button>
+        </div>
+
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Импортируйте localStorage</strong>
+            <p>Откройте консоль браузера (F12 -> Console) на странице <span class="service-name" id="serviceDomain">app.devin.ai</span> и вставьте:</p>
+            <textarea id="localStorageOutput" placeholder="localStorage скрипт появится здесь..." readonly></textarea>
+            <button onclick="copyLocalStorage()">Копировать localStorage</button>
+        </div>
+
+        <div class="step">
+            <span class="step-number">4</span>
+            <strong>Готово!</strong>
+            <p>Перезагрузите страницу (F5) и вы войдете в аккаунт</p>
+        </div>
+
+        <div class="success" id="successMsg"></div>
+        <div class="error" id="errorMsg"></div>
+    </div>
+
+    <script>
+        let sessionData = null;
+        let currentService = 'devin';
+
+        const serviceConfig = {
+            devin: {
+                name: 'Devin.ai',
+                domains: ['devin.ai'],
+                origins: ['https://app.devin.ai'],
+                siteUrl: 'https://app.devin.ai',
+                displayDomain: 'app.devin.ai',
+                localStorageKeys: ['auth1_session', 'known-org-ids', 'last-internal-org', 'migrated-to-unscoped']
+            },
+            windsurf: {
+                name: 'WindSurf',
+                domains: ['windsurf.com', 'codeium.com'],
+                origins: ['https://windsurf.com', 'https://codeium.com', 'https://www.windsurf.com', 'https://www.codeium.com'],
+                siteUrl: 'https://windsurf.com',
+                displayDomain: 'windsurf.com',
+                localStorageKeys: []
+            }
+        };
+
+        function selectService(service) {
+            currentService = service;
+            document.querySelectorAll('.service-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-' + service).classList.add('active');
+
+            const config = serviceConfig[service];
+            document.getElementById('btnOpenSite').textContent = 'Открыть ' + config.name;
+            document.getElementById('serviceDomain').textContent = config.displayDomain;
+
+            if (sessionData) {
+                processSession();
+            }
+        }
+
+        function detectService(data) {
+            if (!data || !data.cookies) return null;
+
+            let devinCount = 0;
+            let windsurfCount = 0;
+
+            for (const cookie of data.cookies) {
+                const domain = cookie.domain || '';
+                if (domain.includes('devin.ai')) devinCount++;
+                if (domain.includes('windsurf.com') || domain.includes('codeium.com')) windsurfCount++;
+            }
+
+            if (devinCount > 0 && windsurfCount === 0) return 'devin';
+            if (windsurfCount > 0 && devinCount === 0) return 'windsurf';
+            return null;
+        }
+
+        document.getElementById('sessionFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            document.getElementById('filename').textContent = file.name;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    sessionData = JSON.parse(event.target.result);
+
+                    var detected = detectService(sessionData);
+                    if (detected) {
+                        selectService(detected);
+                        document.getElementById('detectedBadge').style.display = 'inline-block';
+                    } else {
+                        document.getElementById('detectedBadge').style.display = 'none';
+                    }
+
+                    processSession();
+                    showSuccess('Файл загружен успешно!');
+                } catch (err) {
+                    showError('Ошибка чтения файла: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        function processSession() {
+            if (!sessionData) return;
+
+            var config = serviceConfig[currentService];
+
+            // 1. Обработка cookies
+            var filteredCookies = sessionData.cookies.filter(function(c) {
+                return config.domains.some(function(d) {
+                    return c.domain.includes(d);
+                });
+            });
+
+            var cookieEditorFormat = filteredCookies.map(function(c) {
+                return {
+                    name: c.name,
+                    value: c.value,
+                    domain: c.domain,
+                    hostOnly: !c.domain.startsWith('.'),
+                    path: c.path || '/',
+                    secure: c.secure || false,
+                    httpOnly: c.httpOnly || false,
+                    sameSite: c.sameSite === 'None' ? 'no_restriction' : (c.sameSite || 'lax').toLowerCase(),
+                    session: c.expires === -1,
+                    expirationDate: c.expires === -1 ? undefined : c.expires,
+                    storeId: '0'
+                };
+            });
+            document.getElementById('cookiesOutput').value = JSON.stringify(cookieEditorFormat, null, 2);
+
+            // 2. Обработка localStorage
+            if (sessionData.origins && sessionData.origins.length > 0) {
+                var matchedOrigin = null;
+                for (var i = 0; i < sessionData.origins.length; i++) {
+                    var origin = sessionData.origins[i];
+                    if (config.origins.some(function(o) { return origin.origin === o; })) {
+                        if (origin.localStorage && origin.localStorage.length > 0) {
+                            matchedOrigin = origin;
+                            break;
+                        }
+                    }
+                }
+
+                if (matchedOrigin) {
+                    var itemsToImport;
+                    if (config.localStorageKeys.length > 0) {
+                        itemsToImport = matchedOrigin.localStorage.filter(function(item) {
+                            return config.localStorageKeys.some(function(key) {
+                                return item.name.includes(key);
+                            });
+                        });
+                    } else {
+                        itemsToImport = matchedOrigin.localStorage;
+                    }
+
+                    var script = '// Вставь это в консоль браузера на странице ' + config.displayDomain + '\n';
+                    script += '// (F12 -> Console -> вставить -> Enter)\n\n';
+                    for (var j = 0; j < itemsToImport.length; j++) {
+                        var item = itemsToImport[j];
+                        var escapedValue = item.value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+                        script += "localStorage.setItem('" + item.name + "', '" + escapedValue + "');\n";
+                    }
+                    script += "\nconsole.log('localStorage установлен! Перезагрузи страницу (F5)');\n";
+                    document.getElementById('localStorageOutput').value = script;
+                } else {
+                    document.getElementById('localStorageOutput').value = '// localStorage для ' + config.name + ' не найден в файле сессии';
+                }
+            } else {
+                document.getElementById('localStorageOutput').value = '// localStorage не найден в файле сессии';
+            }
+        }
+
+        function openServiceSite() {
+            var config = serviceConfig[currentService];
+            window.open(config.siteUrl, '_blank');
+        }
+
+        function copyCookies() {
+            var textarea = document.getElementById('cookiesOutput');
+            if (!textarea.value) {
+                showError('Сначала загрузите файл сессии!');
+                return;
+            }
+            textarea.select();
+            document.execCommand('copy');
+            showSuccess('Cookies скопированы! Вставьте их в Cookie-Editor');
+        }
+
+        function copyLocalStorage() {
+            var textarea = document.getElementById('localStorageOutput');
+            if (!textarea.value) {
+                showError('Сначала загрузите файл сессии!');
+                return;
+            }
+            textarea.select();
+            document.execCommand('copy');
+            showSuccess('localStorage скрипт скопирован! Вставьте в консоль браузера');
+        }
+
+        function showSuccess(msg) {
+            var el = document.getElementById('successMsg');
+            el.textContent = msg;
+            el.style.display = 'block';
+            setTimeout(function() { el.style.display = 'none'; }, 5000);
+        }
+
+        function showError(msg) {
+            var el = document.getElementById('errorMsg');
+            el.textContent = msg;
+            el.style.display = 'block';
+            setTimeout(function() { el.style.display = 'none'; }, 5000);
+        }
+    </script>
+</body>
+</html>
