@@ -87,6 +87,29 @@ The following cloud features are disabled by default:
 
 ---
 
+### Performance Tuning (use full CPU/GPU power)
+
+PylaAI now auto-detects and uses **all CPU cores** for ONNX Runtime inference
+and OpenCV operations. GPU acceleration is also auto-detected with the
+following priority: **TensorRT > CUDA > OpenVINO > DirectML > CPU**.
+
+When both entity detection and wall detection run in the same frame, they
+execute **in parallel** on separate threads for maximum throughput.
+
+Key settings in `cfg/general_config.toml`:
+
+| Setting | Default | Description |
+|---|---|---|
+| `cpu_or_gpu` | `"auto"` | `"auto"` picks the best GPU provider, `"cpu"` forces CPU |
+| `onnx_threads` | `"auto"` | `"auto"` = all cores. Set a number to reserve cores for the emulator |
+| `use_int8_models` | `"no"` | `"yes"` enables ~1.3-1.7x faster INT8 inference on CPU |
+| `max_ips` | `"auto"` | `"auto"` = no limit. Set a number to cap iterations per second |
+
+**Tip:** For the best performance on CPU, set `use_int8_models = "yes"`. For
+NVIDIA GPUs, install `onnxruntime-gpu` instead of `onnxruntime-directml`.
+
+---
+
 ### INT8 Quantization (CPU speedup)
 
 If you don't have a discrete GPU, you can run the ONNX models in INT8 instead

@@ -7,6 +7,10 @@ cpu_or_gpu = "auto"
 # small accuracy drop (depends on calibration quality). See
 # tools/quantize_models.py to regenerate the INT8 models from real frames.
 use_int8_models = "no"
+# Number of threads for ONNX Runtime and OpenCV inference.
+# "auto" = use all CPU cores.  Set to a number (e.g. 4) to reserve
+# cores for the emulator or other tasks.
+onnx_threads = "auto"
 max_ips = "auto"
 pyla_version = "0.6.5"
 long_press_star_drop = "yes"

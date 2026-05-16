@@ -145,7 +145,7 @@ def pyla_main(data):
                 self.manage_time_tasks(frame, current_time)
 
                 brawler = self.Stage_manager.brawlers_pick_data[0]['brawler']
-                self.Play.main(frame, brawler, self)
+                self.Play.main(frame, brawler, self, current_time)
                 c += 1
 
                 if target_period:

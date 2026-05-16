@@ -1,11 +1,15 @@
 import os
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 import numpy as np
 import onnxruntime as ort
 
 from utils import load_toml_as_dict
+
+# Enable hardware-optimised OpenCV paths (SSE4, AVX2, NEON, etc.).
+cv2.setUseOptimized(True)
 
 warnings.filterwarnings(
     "ignore",
@@ -42,10 +46,29 @@ def resolve_model_path(model_path):
     return model_path
 
 
-def get_optimal_threads(max_limit=4):
-    threads = os.cpu_count() or 2
-    threads_amount = min(max(2, threads // 2), max_limit)
-    print(f"Detected {threads} CPU threads, using {threads_amount} threads.")
+def get_optimal_threads():
+    """Use all physical cores for inference.
+
+    The previous implementation capped at 4 threads which left most of the
+    CPU idle.  Now we default to ``cpu_count`` (logical cores) so that ONNX
+    Runtime and OpenCV can saturate the machine.  Users who want to reserve
+    cores for other processes can set ``onnx_threads`` in
+    ``cfg/general_config.toml``.
+    """
+    cfg = load_toml_as_dict("cfg/general_config.toml")
+    configured = cfg.get('onnx_threads', 'auto')
+    total = os.cpu_count() or 2
+    if configured != 'auto':
+        try:
+            threads_amount = max(1, int(configured))
+        except (ValueError, TypeError):
+            threads_amount = total
+    else:
+        threads_amount = total
+    print(f"Detected {total} CPU threads, using {threads_amount} for inference.")
+    # Let OpenCV also use all available cores for parallel primitives
+    # (resize, cvtColor, matchTemplate, etc.).
+    cv2.setNumThreads(threads_amount)
     return threads_amount
 
 
@@ -195,31 +218,56 @@ class Detect:
         )
         self._last_resized_h = 0
         self._last_resized_w = 0
-        # Reusable float32 staging buffer for the resized image (HWC).
-        self._resize_buffer = None
+        # Shared thread pool for running multiple model inferences in parallel.
+        # Created once per Detect instance to avoid pool-creation overhead.
+        self._thread_pool = None
+
+    @staticmethod
+    def _pick_provider():
+        """Select the fastest available execution provider.
+
+        Priority: TensorRT > CUDA > OpenVINO > DirectML > CPU.
+        TensorRT gives the best throughput on NVIDIA GPUs; OpenVINO
+        accelerates Intel iGPUs & CPUs.
+        """
+        available = ort.get_available_providers()
+        preference = [
+            ("TensorrtExecutionProvider", "TensorRT GPU"),
+            ("CUDAExecutionProvider", "CUDA GPU"),
+            ("OpenVINOExecutionProvider", "OpenVINO (Intel)"),
+            ("DmlExecutionProvider", "DirectML GPU"),
+            ("AzureExecutionProvider", "Azure"),
+        ]
+        for ep, label in preference:
+            if ep in available:
+                print(f"Using {label} for inference")
+                return ep
+        print("Using CPU for inference")
+        return "CPUExecutionProvider"
 
     def load_model(self):
-        available_providers = ort.get_available_providers()
-        onnx_provider = "CPUExecutionProvider"
-        if self.preferred_device == "gpu" or self.preferred_device == "auto":
-            if "CUDAExecutionProvider" in available_providers:
-                onnx_provider = "CUDAExecutionProvider"
-                print("Using CUDA GPU")
-            elif "DmlExecutionProvider" in available_providers:
-                onnx_provider = "DmlExecutionProvider"
-                print("Using GPU")
-            elif "AzureExecutionProvider" in available_providers:
-                onnx_provider = "AzureExecutionProvider"
-            else:
-                print("Using CPU as no GPU provider found")
+        if self.preferred_device in ("gpu", "auto"):
+            onnx_provider = self._pick_provider()
+        else:
+            onnx_provider = "CPUExecutionProvider"
+            print("Using CPU for inference (forced by config)")
 
         so = ort.SessionOptions()
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         so.intra_op_num_threads = optimal_threads_amount
         so.inter_op_num_threads = optimal_threads_amount
-        # Sequential execution is generally faster for single-image inference;
-        # parallel execution adds inter-op pool overhead with no benefit here.
         so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        # Reduce memory allocation overhead by letting ORT reuse buffers.
+        so.enable_mem_pattern = True
+        so.enable_mem_reuse = True
+        # If available, save the optimized graph so subsequent launches
+        # skip the optimisation pass (noticeable when loading 4 models).
+        cache_dir = os.path.join(os.path.dirname(self.model_path), ".ort_cache")
+        os.makedirs(cache_dir, exist_ok=True)
+        so.optimized_model_filepath = os.path.join(
+            cache_dir,
+            os.path.basename(self.model_path).replace(".onnx", "_opt.onnx"),
+        )
         model = ort.InferenceSession(self.model_path, sess_options=so, providers=[onnx_provider])
         self._input_name = model.get_inputs()[0].name
         return model, onnx_provider
@@ -227,9 +275,9 @@ class Detect:
     def preprocess_image(self, img):
         """Letterbox-resize ``img`` into the pre-allocated CHW buffer.
 
-        Avoids creating intermediate full-frame copies via ``np.transpose``
-        and a separate ``astype``/divide by writing each channel directly
-        into the contiguous output buffer with a single fused multiply.
+        Uses a single ``np.multiply`` + ``np.transpose`` which NumPy can
+        dispatch to BLAS / SIMD, then writes the result straight into the
+        contiguous ONNX input tensor.
         """
         h, w = img.shape[:2]
         in_h, in_w = self.input_size
@@ -239,28 +287,19 @@ class Detect:
 
         resized_img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
 
-        if (
-            self._resize_buffer is None
-            or self._resize_buffer.shape[0] < new_h
-            or self._resize_buffer.shape[1] < new_w
-        ):
-            self._resize_buffer = np.empty((max(new_h, in_h), max(new_w, in_w), 3), dtype=np.float32)
-        np.multiply(
-            resized_img,
-            np.float32(1.0 / 255.0),
-            out=self._resize_buffer[:new_h, :new_w],
-            dtype=np.float32,
-            casting="unsafe",
-        )
-
         buf = self._padded_img_buffer
         if new_h < self._last_resized_h or new_w < self._last_resized_w:
             buf.fill(128.0 / 255.0)
 
-        src = self._resize_buffer[:new_h, :new_w]
-        buf[0, 0, :new_h, :new_w] = src[:, :, 0]
-        buf[0, 1, :new_h, :new_w] = src[:, :, 1]
-        buf[0, 2, :new_h, :new_w] = src[:, :, 2]
+        # Fused uint8->float32 conversion + channel transpose in one pass.
+        # np.multiply with casting="unsafe" does the type promotion in-place
+        # and is faster than a separate astype + divide.
+        buf[0, :, :new_h, :new_w] = np.multiply(
+            resized_img.transpose(2, 0, 1),
+            np.float32(1.0 / 255.0),
+            dtype=np.float32,
+            casting="unsafe",
+        )
 
         self._last_resized_h = new_h
         self._last_resized_w = new_w

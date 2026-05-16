@@ -1,6 +1,7 @@
 import math
 import random
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 import numpy as np
@@ -188,6 +189,12 @@ class Play(Movement):
         self.entity_detection_confidence = bot_config["entity_detection_confidence"]
         self.time_since_holding_attack = None
         self.seconds_to_hold_attack_after_reaching_max = load_toml_as_dict("cfg/bot_config.toml")["seconds_to_hold_attack_after_reaching_max"]
+        # Thread pool for running entity + tile detection in parallel.
+        self._inference_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="infer")
+        # Cached area scale value (invalidated when resolution changes).
+        self._cached_area_scale = None
+        self._cached_area_scale_wr = None
+        self._cached_area_scale_hr = None
 
     def load_brawler_ranges(self, brawlers_info=None):
         if not brawlers_info:
@@ -332,7 +339,9 @@ class Play(Movement):
 
         return False if incomplete else data
 
-    def track_no_detections(self, data):
+    def track_no_detections(self, data, current_time=None):
+        if current_time is None:
+            current_time = time.time()
         if not data:
             data = {
                 "enemy": None,
@@ -340,7 +349,7 @@ class Play(Movement):
             }
         for key in self.time_since_detections:
             if key in data and data[key]:
-                self.time_since_detections[key] = time.time()
+                self.time_since_detections[key] = current_time
 
     def do_movement(self, movement):
         movement = movement.lower()
@@ -366,27 +375,24 @@ class Play(Movement):
 
     def loop(self, brawler, data, current_time):
         movement = self.get_movement(player_data=data['player'][0], enemy_data=data['enemy'], walls=data['wall'], brawler=brawler)
-        current_time = time.time()
         if current_time - self.time_since_movement > self.minimum_movement_delay:
             movement = self.unstuck_movement_if_needed(movement, current_time)
             self.do_movement(movement)
-            self.time_since_movement = time.time()
+            self.time_since_movement = current_time
         return movement
 
     def _resolution_area_scale(self):
-        """Pixel-count thresholds in cfg/bot_config.toml are calibrated for the
-        reference 1920x1080 resolution. The crop areas used for super / gadget
-        / hypercharge / idle checks are scaled by ``wr * hr`` at runtime, so
-        the pixel count we measure inside each crop scales by the same area
-        factor. Multiply the threshold by ``wr * hr`` so e.g. a 1600x720
-        emulator (factor 0.556) needs a proportionally smaller number of
-        matching pixels to consider an ability ready.
-        """
+        """Return ``wr * hr`` with per-resolution caching."""
         wr = self.window_controller.width_ratio
         hr = self.window_controller.height_ratio
         if not wr or not hr:
             return 1.0
-        return wr * hr
+        if wr == self._cached_area_scale_wr and hr == self._cached_area_scale_hr:
+            return self._cached_area_scale
+        self._cached_area_scale = wr * hr
+        self._cached_area_scale_wr = wr
+        self._cached_area_scale_hr = hr
+        return self._cached_area_scale
 
     def check_if_hypercharge_ready(self, frame):
         wr, hr = self.window_controller.width_ratio, self.window_controller.height_ratio
@@ -581,26 +587,35 @@ class Play(Movement):
 
         return movement
 
-    def main(self, frame, brawler, main):
-        current_time = time.time()
-        data = self.get_main_data(frame)
-        if self.should_detect_walls and current_time - self.time_since_walls_checked > self.walls_treshold:
+    def main(self, frame, brawler, main, current_time=None):
+        if current_time is None:
+            current_time = time.time()
 
-            tile_data = self.get_tile_data(frame)
+        need_walls = (
+            self.should_detect_walls
+            and current_time - self.time_since_walls_checked > self.walls_treshold
+        )
 
+        if need_walls:
+            # Run entity and tile detection in parallel on separate threads
+            # so both ONNX sessions can overlap compute.
+            entity_future = self._inference_pool.submit(self.get_main_data, frame)
+            tile_future = self._inference_pool.submit(self.get_tile_data, frame)
+            data = entity_future.result()
+            tile_data = tile_future.result()
             walls = self.process_tile_data(tile_data)
-
             self.time_since_walls_checked = current_time
             self.last_walls_data = walls
             data['wall'] = walls
-        elif self.keep_walls_in_memory:
-            data['wall'] = self.last_walls_data
-
+        else:
+            data = self.get_main_data(frame)
+            if self.keep_walls_in_memory:
+                data['wall'] = self.last_walls_data
 
         data = self.validate_game_data(data)
-        self.track_no_detections(data)
+        self.track_no_detections(data, current_time)
         if data:
-            self.time_since_player_last_found = time.time()
+            self.time_since_player_last_found = current_time
             if main.state != "match":
                 main.state = get_state(frame)
                 if main.state != "match":
@@ -608,7 +623,7 @@ class Play(Movement):
         if not data:
             if current_time - self.time_since_player_last_found > 1.0:
                 self.window_controller.keys_up(list("wasd"))
-            self.time_since_different_movement = time.time()
+            self.time_since_different_movement = current_time
             if current_time - self.time_since_last_proceeding > self.no_detection_proceed_delay:
                 current_state = get_state(frame)
                 if current_state != "match":
@@ -616,9 +631,9 @@ class Play(Movement):
                 else:
                     print("haven't detected the player in a while proceeding")
                     self.window_controller.press_key("Q")
-                    self.time_since_last_proceeding = time.time()
+                    self.time_since_last_proceeding = current_time
             return
-        self.time_since_last_proceeding = time.time()
+        self.time_since_last_proceeding = current_time
         self.is_hypercharge_ready = False
         if current_time - self.time_since_hypercharge_checked > self.hypercharge_treshold:
             self.is_hypercharge_ready = self.check_if_hypercharge_ready(frame)

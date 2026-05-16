@@ -1,5 +1,7 @@
 .venv/
 /.idea
+# ONNX Runtime optimized graph cache
+models/.ort_cache/
 *.pyc
 cfg/match_history.toml
 latest_brawler_data.json
