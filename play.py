@@ -431,7 +431,7 @@ class Play(Movement):
         x1, y1 = int(super_crop_area[0] * wr), int(super_crop_area[1] * hr)
         x2, y2 = int(super_crop_area[2] * wr), int(super_crop_area[3] * hr)
         screenshot = frame[y1:y2, x1:x2]
-        yellow_pixels = count_hsv_pixels(screenshot, (17, 170, 200), (27, 255, 255))
+        yellow_pixels = count_hsv_pixels(screenshot, (15, 100, 150), (35, 255, 255))
         threshold = self.super_pixels_minimum * self._resolution_area_scale()
         if debug:
             print("super yellow pixels:", yellow_pixels, "(if > ", threshold, " then super is ready)")
@@ -559,7 +559,7 @@ class Play(Movement):
 
             if (enemy_hittable and
                     (enemy_distance <= super_range
-                     or super_type in ["spawnable", "other"]
+                     or super_type in ["spawnable", "other", "other_target"]
                      or (brawler in ["stu", "surge"] and super_type == "charge" and enemy_distance <= super_range + attack_range)
                     )):
                 if self.is_hypercharge_ready:

@@ -14,6 +14,7 @@ Integrated into main.py startup when ``auto_update = "yes"`` is set in
 import io
 import os
 import shutil
+import subprocess
 import sys
 import zipfile
 
@@ -23,6 +24,8 @@ import requests
 # Paths
 # ---------------------------------------------------------------------------
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Walk up from tools/ to find the project root.  Works regardless of what
+# the user renamed the folder to (e.g. "PylaAI", "bot", etc.).
 PROJECT_ROOT = os.path.normpath(os.path.join(SCRIPT_DIR, ".."))
 
 # File that stores the last known commit hash after a successful update.
@@ -66,10 +69,28 @@ def _repo_info():
 
 
 def _current_commit():
-    """Return the stored commit hash from the last update, or ``None``."""
+    """Return the stored commit hash from the last update, or ``None``.
+
+    Falls back to ``git rev-parse HEAD`` when no ``.update_version`` file
+    exists (first run from a git clone).
+    """
     if os.path.isfile(VERSION_FILE):
         with open(VERSION_FILE, "r") as f:
             return f.read().strip() or None
+    # Try git as fallback (works when cloned, not when downloaded as zip).
+    git_dir = os.path.join(PROJECT_ROOT, ".git")
+    if os.path.isdir(git_dir):
+        try:
+            sha = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                cwd=PROJECT_ROOT,
+                stderr=subprocess.DEVNULL,
+            ).decode().strip()
+            if sha:
+                _save_commit(sha)
+                return sha
+        except Exception:
+            pass
     return None
 
 
@@ -119,7 +140,11 @@ def check_for_update():
     if local_sha:
         msg = f"Update available: {latest_sha[:8]} - {commit_msg}"
     else:
-        msg = f"Latest remote commit: {latest_sha[:8]} - {commit_msg}"
+        # First run without git — register the remote version so we don't
+        # re-download the same code the user already has.
+        _save_commit(latest_sha)
+        msg = f"Version registered: {latest_sha[:8]}. Updates will be checked on next startup."
+        return False, latest_sha, msg
     return True, latest_sha, msg
 
 
