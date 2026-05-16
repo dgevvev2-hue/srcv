@@ -1,0 +1,28 @@
+personal_webhook = ""
+discord_id = ""
+super_debug = "no"
+cpu_or_gpu = "auto"
+# Set to "yes" to use INT8-quantized ONNX models from ./models/*_int8.onnx
+# when available. INT8 is typically 1.4-2x faster than FP32 on CPU with a
+# small accuracy drop (depends on calibration quality). See
+# tools/quantize_models.py to regenerate the INT8 models from real frames.
+use_int8_models = "no"
+# Number of threads for ONNX Runtime and OpenCV inference.
+# "auto" = use all CPU cores.  Set to a number (e.g. 4) to reserve
+# cores for the emulator or other tasks.
+onnx_threads = "auto"
+# Automatic updates from GitHub. "yes" = check & download on startup,
+# "check" = only print if an update is available, "no" = disabled.
+auto_update = "yes"
+# GitHub repo and branch for auto-update (owner/repo format).
+update_repo = "dgevvev2-hue/srcv"
+update_branch = "main"
+max_ips = "auto"
+pyla_version = "0.6.5"
+long_press_star_drop = "yes"
+trophies_multiplier = 1
+run_for_minutes = 600
+current_emulator = "LDPlayer"
+emulator_port = 5037
+api_base_url = "default"
+brawl_stars_package = "com.supercell.brawlstars"
