@@ -146,7 +146,8 @@ def pyla_main(data):
 
                 brawler = self.Stage_manager.brawlers_pick_data[0]['brawler']
                 self.Play.main(frame, brawler, self, current_time)
-                c += 1
+                if not getattr(self.Play, '_frame_skipped', False):
+                    c += 1
 
                 if target_period:
                     work_time = time.perf_counter() - frame_start

@@ -614,7 +614,9 @@ class Play(Movement):
         frame_seq = self.window_controller._frame_seq
         if frame_seq == self._last_frame_seq and self._last_detection_data is not None:
             data = self._last_detection_data
+            self._frame_skipped = True
         else:
+            self._frame_skipped = False
             need_walls = (
                 self.should_detect_walls
                 and current_time - self.time_since_walls_checked > self.walls_treshold

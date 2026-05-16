@@ -173,15 +173,55 @@ class WindowController:
             }
 
         return frame
+    def _safe_touch(self, x, y, action, pointer_id=0):
+        """Send a touch event, reconnecting once on socket errors."""
+        for attempt in range(2):
+            try:
+                self.scrcpy_client.control.touch(int(x), int(y), action, pointer_id)
+                return
+            except (ConnectionResetError, BrokenPipeError, OSError) as exc:
+                if attempt == 0:
+                    print(f"Scrcpy connection lost ({exc}), reconnecting...")
+                    self._reconnect_scrcpy()
+                else:
+                    print(f"Scrcpy reconnect failed, skipping touch event.")
+
+    def _reconnect_scrcpy(self):
+        """Stop and restart the scrcpy client."""
+        try:
+            self.scrcpy_client.stop()
+        except Exception:
+            pass
+        time.sleep(1)
+        try:
+            self.scrcpy_client = scrcpy.Client(device=self.device, max_width=0)
+
+            def on_frame(frame):
+                if frame is not None:
+                    converted = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    now = time.time()
+                    with self.frame_lock:
+                        self.last_frame = converted
+                        self.last_frame_time = now
+                        self._frame_seq += 1
+
+            self.scrcpy_client.add_listener(scrcpy.EVENT_FRAME, on_frame)
+            self.scrcpy_client.start(threaded=True)
+            time.sleep(1)
+            self.are_we_moving = False
+            self.last_joystick_pos = (None, None)
+            print("Scrcpy reconnected successfully.")
+        except Exception as e:
+            print(f"Scrcpy reconnect error: {e}")
+
     def touch_down(self, x, y, pointer_id=0):
-        # We explicitly pass the pointer_id
-        self.scrcpy_client.control.touch(int(x), int(y), scrcpy.ACTION_DOWN, pointer_id)
+        self._safe_touch(x, y, scrcpy.ACTION_DOWN, pointer_id)
 
     def touch_move(self, x, y, pointer_id=0):
-        self.scrcpy_client.control.touch(int(x), int(y), scrcpy.ACTION_MOVE, pointer_id)
+        self._safe_touch(x, y, scrcpy.ACTION_MOVE, pointer_id)
 
     def touch_up(self, x, y, pointer_id=0):
-        self.scrcpy_client.control.touch(int(x), int(y), scrcpy.ACTION_UP, pointer_id)
+        self._safe_touch(x, y, scrcpy.ACTION_UP, pointer_id)
 
     def keys_up(self, keys: List[str]):
         if "".join(keys).lower() == "wasd":
