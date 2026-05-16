@@ -373,16 +373,32 @@ class Play(Movement):
             self.time_since_movement = time.time()
         return movement
 
+    def _resolution_area_scale(self):
+        """Pixel-count thresholds in cfg/bot_config.toml are calibrated for the
+        reference 1920x1080 resolution. The crop areas used for super / gadget
+        / hypercharge / idle checks are scaled by ``wr * hr`` at runtime, so
+        the pixel count we measure inside each crop scales by the same area
+        factor. Multiply the threshold by ``wr * hr`` so e.g. a 1600x720
+        emulator (factor 0.556) needs a proportionally smaller number of
+        matching pixels to consider an ability ready.
+        """
+        wr = self.window_controller.width_ratio
+        hr = self.window_controller.height_ratio
+        if not wr or not hr:
+            return 1.0
+        return wr * hr
+
     def check_if_hypercharge_ready(self, frame):
         wr, hr = self.window_controller.width_ratio, self.window_controller.height_ratio
         x1, y1 = int(hypercharge_crop_area[0] * wr), int(hypercharge_crop_area[1] * hr)
         x2, y2 = int(hypercharge_crop_area[2] * wr), int(hypercharge_crop_area[3] * hr)
         screenshot = frame[y1:y2, x1:x2]
         purple_pixels = count_hsv_pixels(screenshot, (137, 158, 159), (179, 255, 255))
+        threshold = self.hypercharge_pixels_minimum * self._resolution_area_scale()
         if debug:
-            print("hypercharge purple pixels:", purple_pixels, "(if > ", self.hypercharge_pixels_minimum, " then hypercharge is ready)")
+            print("hypercharge purple pixels:", purple_pixels, "(if > ", threshold, " then hypercharge is ready)")
             cv2.imwrite(f"debug_frames/hypercharge_debug_{int(time.time())}.png", cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR))
-        if purple_pixels > self.hypercharge_pixels_minimum:
+        if purple_pixels > threshold:
             return True
         return False
 
@@ -392,10 +408,11 @@ class Play(Movement):
         x2, y2 = int(gadget_crop_area[2] * wr), int(gadget_crop_area[3] * hr)
         screenshot = frame[y1:y2, x1:x2]
         green_pixels = count_hsv_pixels(screenshot, (57, 219, 165), (62, 255, 255))
+        threshold = self.gadget_pixels_minimum * self._resolution_area_scale()
         if debug:
-            print("gadget green pixels:", green_pixels, "(if > ", self.gadget_pixels_minimum, " then gadget is ready)")
+            print("gadget green pixels:", green_pixels, "(if > ", threshold, " then gadget is ready)")
             cv2.imwrite(f"debug_frames/gadget_debug_{int(time.time())}.png", cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR))
-        if green_pixels > self.gadget_pixels_minimum:
+        if green_pixels > threshold:
             return True
         return False
 
@@ -405,11 +422,12 @@ class Play(Movement):
         x2, y2 = int(super_crop_area[2] * wr), int(super_crop_area[3] * hr)
         screenshot = frame[y1:y2, x1:x2]
         yellow_pixels = count_hsv_pixels(screenshot, (17, 170, 200), (27, 255, 255))
+        threshold = self.super_pixels_minimum * self._resolution_area_scale()
         if debug:
-            print("super yellow pixels:", yellow_pixels, "(if > ", self.super_pixels_minimum, " then super is ready)")
+            print("super yellow pixels:", yellow_pixels, "(if > ", threshold, " then super is ready)")
             cv2.imwrite(f"debug_frames/super_debug_{int(time.time())}.png", cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR))
 
-        if yellow_pixels > self.super_pixels_minimum:
+        if yellow_pixels > threshold:
             return True
         return False
 

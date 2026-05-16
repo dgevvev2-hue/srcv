@@ -20,8 +20,12 @@ class LobbyAutomation:
         x_start, x_end = int(400 * wr), int(1500 * wr)
         y_start, y_end = int(380 * hr), int(700 * hr)
         gray_pixels = count_hsv_pixels(frame[y_start:y_end, x_start:x_end], (0, 0, 55), (10, 15, 77))
-        if debug: print(f"gray pixels (if > {gray_pixels_treshold} then bot will try to unidle) :", gray_pixels)
-        if gray_pixels > gray_pixels_treshold:
+        # gray_pixels_treshold is calibrated for 1920x1080; scale by the area
+        # ratio so non-standard emulator resolutions still trigger correctly.
+        area_scale = (wr * hr) if (wr and hr) else 1.0
+        threshold = gray_pixels_treshold * area_scale
+        if debug: print(f"gray pixels (if > {threshold} then bot will try to unidle) :", gray_pixels)
+        if gray_pixels > threshold:
             self.window_controller.click(int(535 * wr), int(615 * hr))
 
     def select_brawler(self, brawler):
