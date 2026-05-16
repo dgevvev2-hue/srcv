@@ -149,7 +149,14 @@ class WindowController:
             self.width = frame.shape[1]
             self.height = frame.shape[0]
             if (self.width, self.height) != (brawl_stars_width, brawl_stars_height):
-                print(f"⚠️⚠️⚠️Unexpected resolution: {self.width}x{self.height}. Expected {brawl_stars_width}x{brawl_stars_height}. Please set your emulator resolution to 1920x1080 for best results.")
+                print(
+                    f"Resolution: {self.width}x{self.height} (reference is "
+                    f"{brawl_stars_width}x{brawl_stars_height}). Auto-scaling "
+                    f"crop regions, pixel thresholds, brawler ranges, and "
+                    f"joystick deltas by ({self.width / brawl_stars_width:.3f}, "
+                    f"{self.height / brawl_stars_height:.3f}). For best template "
+                    f"matching accuracy use 1920x1080."
+                )
             self.width_ratio = self.width / brawl_stars_width
             self.height_ratio = self.height / brawl_stars_height
             self.joystick_x, self.joystick_y = 220 * self.width_ratio, 870 * self.height_ratio
@@ -182,6 +189,14 @@ class WindowController:
                 dx, dy = directions_xy_deltas_dict[key]
                 delta_x += dx
                 delta_y += dy
+
+        # Joystick deltas are authored for 1920x1080. The joystick base position
+        # is already scaled by width_ratio/height_ratio, so scale the offset by
+        # the same factor (use min of the two so we don't overshoot the
+        # joystick radius on stretched resolutions).
+        sf = self.scale_factor or 1.0
+        delta_x = int(delta_x * sf)
+        delta_y = int(delta_y * sf)
 
         if not self.are_we_moving:
             self.touch_down(self.joystick_x, self.joystick_y, pointer_id=self.PID_JOYSTICK)
