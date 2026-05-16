@@ -87,6 +87,40 @@ The following cloud features are disabled by default:
 
 ---
 
+### INT8 Quantization (CPU speedup)
+
+If you don't have a discrete GPU, you can run the ONNX models in INT8 instead
+of FP32 for ~1.3-1.7x faster inference on CPU (measured on a 2-core VM; gains
+are typically larger on real desktops). Pre-quantized models are already
+shipped in `models/*_int8.onnx`.
+
+To enable them:
+
+```toml
+# cfg/general_config.toml
+use_int8_models = "yes"
+```
+
+To regenerate the INT8 models yourself (recommended after model updates, or to
+calibrate from your own gameplay frames for better accuracy):
+
+```bash
+# Synthetic calibration (works out of the box, no setup):
+python tools/quantize_models.py --num-samples 32 --bench
+
+# Real-frame calibration (best accuracy):
+# 1. Set super_debug = "yes" in cfg/general_config.toml
+# 2. Run the bot for ~1 minute so it dumps frames to debug_frames/
+# 3. Then:
+python tools/quantize_models.py --frames-dir debug_frames/ --bench
+```
+
+The script writes `models/*_int8.onnx` next to the originals. If something
+goes wrong with INT8 outputs, set `use_int8_models = "no"` to fall back to
+FP32 immediately, without removing any files.
+
+---
+
 ### Running Tests
 
 To make sure changes do not introduce regressions:

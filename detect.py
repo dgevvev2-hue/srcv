@@ -16,6 +16,32 @@ warnings.filterwarnings(
 debug = load_toml_as_dict("cfg/general_config.toml")['super_debug'] == "yes"
 
 
+def resolve_model_path(model_path):
+    """If ``use_int8_models = "yes"`` in the config and an INT8 sibling exists
+    next to ``model_path`` (e.g. ``mainInGameModel_int8.onnx`` next to
+    ``mainInGameModel.onnx``), return that instead. Otherwise return the
+    original path unchanged so existing setups keep working.
+
+    INT8 models are produced by ``tools/quantize_models.py`` and are
+    typically 1.4-2x faster on CPU than the FP32 originals.
+    """
+    cfg = load_toml_as_dict("cfg/general_config.toml")
+    if cfg.get('use_int8_models', 'no') != 'yes':
+        return model_path
+    base, ext = os.path.splitext(model_path)
+    if base.endswith('_int8'):
+        return model_path
+    int8_path = base + '_int8' + ext
+    if os.path.isfile(int8_path):
+        print(f"Using INT8 model: {int8_path}")
+        return int8_path
+    print(
+        f"use_int8_models=yes but no {int8_path} found; falling back to FP32. "
+        f"Run `python tools/quantize_models.py` to generate it."
+    )
+    return model_path
+
+
 def get_optimal_threads(max_limit=4):
     threads = os.cpu_count() or 2
     threads_amount = min(max(2, threads // 2), max_limit)
@@ -143,7 +169,7 @@ def _numpy_nms(preds, conf_thresh, iou_thresh=0.6):
 class Detect:
     def __init__(self, model_path, ignore_classes=None, classes=None, input_size=(640, 640)):
         self.preferred_device = load_toml_as_dict("cfg/general_config.toml")['cpu_or_gpu']
-        self.model_path = model_path
+        self.model_path = resolve_model_path(model_path)
         self.classes = classes
         self.ignore_classes = ignore_classes if ignore_classes else []
         # Resolve ignored class names to ids once so we can do fast int

@@ -2,6 +2,11 @@ personal_webhook = ""
 discord_id = ""
 super_debug = "no"
 cpu_or_gpu = "auto"
+# Set to "yes" to use INT8-quantized ONNX models from ./models/*_int8.onnx
+# when available. INT8 is typically 1.4-2x faster than FP32 on CPU with a
+# small accuracy drop (depends on calibration quality). See
+# tools/quantize_models.py to regenerate the INT8 models from real frames.
+use_int8_models = "no"
 max_ips = "auto"
 pyla_version = "0.6.5"
 long_press_star_drop = "yes"
