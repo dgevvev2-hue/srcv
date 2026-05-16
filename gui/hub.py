@@ -361,7 +361,7 @@ class Hub:
             self.gm3_frame, "brawlball", "Brawlball", orientation=3
         )
         self.rb_showdown_3 = create_gamemode_button(
-            self.gm3_frame, "showdown", "Showdown (Not Implemented yet)", disabled=True, orientation=3
+            self.gm3_frame, "showdown", "Showdown", orientation=3
         )
         self.rb_other_3 = create_gamemode_button(
             self.gm3_frame, "other", "Other", orientation=3

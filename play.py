@@ -179,7 +179,7 @@ class Play(Movement):
         self.wall_history = []
         self.wall_history_length = 3  # Number of frames to keep walls
         self.scene_data = []
-        self.should_detect_walls = bot_config["gamemode"] in ["brawlball", "brawl_ball", "brawll ball"]
+        self.should_detect_walls = bot_config["gamemode"] in ["brawlball", "brawl_ball", "brawll ball", "showdown"]
         self.minimum_movement_delay = bot_config["minimum_movement_delay"]
         self.no_detection_proceed_delay = time_config["no_detection_proceed"]
         self.gadget_pixels_minimum = bot_config["gadget_pixels_minimum"]
