@@ -11,6 +11,12 @@ use_int8_models = "no"
 # "auto" = use all CPU cores.  Set to a number (e.g. 4) to reserve
 # cores for the emulator or other tasks.
 onnx_threads = "auto"
+# Automatic updates from GitHub. "yes" = check & download on startup,
+# "check" = only print if an update is available, "no" = disabled.
+auto_update = "yes"
+# GitHub repo and branch for auto-update (owner/repo format).
+update_repo = "dgevvev2-hue/srcv"
+update_branch = "main"
 max_ips = "auto"
 pyla_version = "0.6.5"
 long_press_star_drop = "yes"

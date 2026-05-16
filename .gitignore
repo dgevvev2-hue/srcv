@@ -2,6 +2,8 @@
 /.idea
 # ONNX Runtime optimized graph cache
 models/.ort_cache/
+# Auto-updater local version marker
+.update_version
 *.pyc
 cfg/match_history.toml
 latest_brawler_data.json

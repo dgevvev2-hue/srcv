@@ -166,6 +166,19 @@ if api_base_url != "localhost":
         print("New Wall detection model found, downloading... (this might take a few minutes depending on your internet speed)")
         get_latest_wall_model_file()
 
+# --- Auto-update from GitHub ---
+_auto_update_cfg = load_toml_as_dict("cfg/general_config.toml").get("auto_update", "no")
+if _auto_update_cfg in ("yes", "check"):
+    try:
+        from tools.auto_updater import check_for_update, auto_update_on_startup
+        if _auto_update_cfg == "check":
+            _, _, _msg = check_for_update()
+            print(_msg)
+        else:
+            auto_update_on_startup()
+    except Exception as _exc:
+        print(f"Auto-update skipped: {_exc}")
+
 # Use the smaller ratio to maintain aspect ratio
 app = App(login, SelectBrawler, pyla_main, all_brawlers, Hub)
 app.start(pyla_version, get_latest_version)
