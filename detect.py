@@ -177,7 +177,8 @@ def _numpy_nms(preds, conf_thresh, iou_thresh=0.6):
 
     if hasattr(keep, "flatten"):
         keep = keep.flatten()
-    keep = np.asarray(list(keep), dtype=np.int64)
+    if not isinstance(keep, np.ndarray):
+        keep = np.asarray(keep, dtype=np.intp)
 
     result = np.empty((keep.shape[0], 6), dtype=np.float32)
     result[:, 0] = x1[keep]
@@ -185,7 +186,7 @@ def _numpy_nms(preds, conf_thresh, iou_thresh=0.6):
     result[:, 2] = x2[keep]
     result[:, 3] = y2[keep]
     result[:, 4] = cls_conf[keep]
-    result[:, 5] = cls_ids[keep].astype(np.float32, copy=False)
+    result[:, 5] = cls_ids[keep]
     return [result]
 
 
@@ -338,27 +339,41 @@ class Detect:
 
         detections = self.postprocess(outputs[0], orig_img_shape, resized_shape, conf_tresh)
 
+        if not detections:
+            return {}
+
         results = {}
         classes = self.classes
         ignore_ids = self._ignore_class_ids
+        num_classes = len(classes) if classes else 0
         for detection in detections:
-            xyxy_int = detection[:, :4].astype(np.int32, copy=False)
-            cls_ids = detection[:, 5].astype(np.int32, copy=False)
-            for i in range(detection.shape[0]):
-                class_id = int(cls_ids[i])
-                if class_id in ignore_ids:
+            if not len(detection):
+                continue
+            cls_ids = detection[:, 5].astype(np.intp)
+            # Vectorized filtering: remove ignored and out-of-range classes
+            if num_classes:
+                valid = (cls_ids < num_classes)
+                if ignore_ids:
+                    for iid in ignore_ids:
+                        valid &= (cls_ids != iid)
+                if not valid.any():
                     continue
-                if classes is None or class_id >= len(classes):
-                    continue
-                class_name = classes[class_id]
+                detection = detection[valid]
+                cls_ids = cls_ids[valid]
+            else:
+                continue
+            xyxy_int = detection[:, :4].astype(np.int32)
+            # Group by class using numpy unique
+            for cid in np.unique(cls_ids):
+                class_name = classes[cid]
                 if class_name in self.ignore_classes:
                     continue
+                mask = cls_ids == cid
+                boxes = xyxy_int[mask].tolist()
                 bucket = results.get(class_name)
                 if bucket is None:
-                    bucket = []
-                    results[class_name] = bucket
-                bucket.append(
-                    [int(xyxy_int[i, 0]), int(xyxy_int[i, 1]), int(xyxy_int[i, 2]), int(xyxy_int[i, 3])]
-                )
+                    results[class_name] = boxes
+                else:
+                    bucket.extend(boxes)
 
         return results

@@ -195,6 +195,10 @@ class Play(Movement):
         self._cached_area_scale = None
         self._cached_area_scale_wr = None
         self._cached_area_scale_hr = None
+        # Frame-skip: reuse last detection result when scrcpy hasn't delivered
+        # a new frame since the last inference.
+        self._last_frame_seq = -1
+        self._last_detection_data = None
 
     def load_brawler_ranges(self, brawlers_info=None):
         if not brawlers_info:
@@ -374,7 +378,7 @@ class Play(Movement):
         return self.brawler_ranges[brawler]
 
     def loop(self, brawler, data, current_time):
-        movement = self.get_movement(player_data=data['player'][0], enemy_data=data['enemy'], walls=data['wall'], brawler=brawler)
+        movement = self.get_movement(player_data=data['player'][0], enemy_data=data['enemy'], walls=data['wall'], brawler=brawler, current_time=current_time)
         if current_time - self.time_since_movement > self.minimum_movement_delay:
             movement = self.unstuck_movement_if_needed(movement, current_time)
             self.do_movement(movement)
@@ -482,12 +486,14 @@ class Play(Movement):
             cache[brawler] = cached
         return cached
 
-    def get_movement(self, player_data, enemy_data, walls, brawler):
+    def get_movement(self, player_data, enemy_data, walls, brawler, current_time=None):
+        if current_time is None:
+            current_time = time.time()
         brawler_info, must_brawler_hold_attack = self._get_cached_brawler_info(brawler)
         if not brawler_info:
             raise ValueError(f"Brawler '{brawler}' not found in brawlers info.")
         # if a brawler has been holding an attack for its max duration + the bot setting, then we release
-        if must_brawler_hold_attack and self.time_since_holding_attack is not None and time.time() - self.time_since_holding_attack >= brawler_info['hold_attack'] + self.seconds_to_hold_attack_after_reaching_max:
+        if must_brawler_hold_attack and self.time_since_holding_attack is not None and current_time - self.time_since_holding_attack >= brawler_info['hold_attack'] + self.seconds_to_hold_attack_after_reaching_max:
             self.attack(touch_up=True, touch_down=False)
             self.time_since_holding_attack = None
 
@@ -538,7 +544,6 @@ class Play(Movement):
                 # because it's better than doing nothing
                 movement = move_horizontal + move_vertical
 
-        current_time = time.time()
         if movement != self.last_movement:
             if current_time - self.last_movement_time >= self.minimum_movement_delay:
                 self.last_movement = movement
@@ -559,10 +564,10 @@ class Play(Movement):
                     )):
                 if self.is_hypercharge_ready:
                     self.use_hypercharge()
-                    self.time_since_hypercharge_checked = time.time()
+                    self.time_since_hypercharge_checked = current_time
                     self.is_hypercharge_ready = False
                 self.use_super()
-                self.time_since_super_checked = time.time()
+                self.time_since_super_checked = current_time
                 self.is_super_ready = False
 
         # Attack if enemy is within attack range and hittable
@@ -571,16 +576,16 @@ class Play(Movement):
             if enemy_hittable:
                 if self.should_use_gadget == True and self.is_gadget_ready and self.time_since_holding_attack is None:
                     self.use_gadget()
-                    self.time_since_gadget_checked = time.time()
+                    self.time_since_gadget_checked = current_time
                     self.is_gadget_ready = False
 
                 if not must_brawler_hold_attack:
                     self.attack()
                 else:
                     if self.time_since_holding_attack is None:
-                        self.time_since_holding_attack = time.time()
+                        self.time_since_holding_attack = current_time
                         self.attack(touch_up=False, touch_down=True)
-                    elif time.time() - self.time_since_holding_attack >= self.brawlers_info[brawler]['hold_attack']:
+                    elif current_time - self.time_since_holding_attack >= brawler_info['hold_attack']:
                         self.attack(touch_up=True, touch_down=False)
                         self.time_since_holding_attack = None
 
@@ -591,26 +596,34 @@ class Play(Movement):
         if current_time is None:
             current_time = time.time()
 
-        need_walls = (
-            self.should_detect_walls
-            and current_time - self.time_since_walls_checked > self.walls_treshold
-        )
-
-        if need_walls:
-            # Run entity and tile detection in parallel on separate threads
-            # so both ONNX sessions can overlap compute.
-            entity_future = self._inference_pool.submit(self.get_main_data, frame)
-            tile_future = self._inference_pool.submit(self.get_tile_data, frame)
-            data = entity_future.result()
-            tile_data = tile_future.result()
-            walls = self.process_tile_data(tile_data)
-            self.time_since_walls_checked = current_time
-            self.last_walls_data = walls
-            data['wall'] = walls
+        # Skip expensive ONNX inference when scrcpy hasn't delivered a new
+        # frame since the last iteration.
+        frame_seq = self.window_controller._frame_seq
+        if frame_seq == self._last_frame_seq and self._last_detection_data is not None:
+            data = self._last_detection_data
         else:
-            data = self.get_main_data(frame)
-            if self.keep_walls_in_memory:
-                data['wall'] = self.last_walls_data
+            need_walls = (
+                self.should_detect_walls
+                and current_time - self.time_since_walls_checked > self.walls_treshold
+            )
+
+            if need_walls:
+                # Run entity and tile detection in parallel on separate threads
+                # so both ONNX sessions can overlap compute.
+                entity_future = self._inference_pool.submit(self.get_main_data, frame)
+                tile_future = self._inference_pool.submit(self.get_tile_data, frame)
+                data = entity_future.result()
+                tile_data = tile_future.result()
+                walls = self.process_tile_data(tile_data)
+                self.time_since_walls_checked = current_time
+                self.last_walls_data = walls
+                data['wall'] = walls
+            else:
+                data = self.get_main_data(frame)
+                if self.keep_walls_in_memory:
+                    data['wall'] = self.last_walls_data
+            self._last_frame_seq = frame_seq
+            self._last_detection_data = data
 
         data = self.validate_game_data(data)
         self.track_no_detections(data, current_time)

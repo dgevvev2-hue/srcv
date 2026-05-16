@@ -81,21 +81,21 @@ def pyla_main(data):
                 sys.exit(1)
 
         def manage_time_tasks(self, frame, current_time):
-            if self.Time_management.state_check():
+            if self.Time_management.state_check(current_time):
                 state = get_state(frame)
                 self.state = state
                 if state != "match":
                     self.Play.time_since_last_proceeding = current_time
                 self.Stage_manager.do_state(state, None)
 
-            if self.Time_management.no_detections_check():
+            if self.Time_management.no_detections_check(current_time):
                 threshold = self.no_detections_action_threshold
                 for value in self.Play.time_since_detections.values():
                     if current_time - value > threshold:
                         self.restart_brawl_stars()
                         break
 
-            if self.Time_management.idle_check():
+            if self.Time_management.idle_check(current_time):
                 self.lobby_automator.check_for_idle(frame)
 
         def main(self):

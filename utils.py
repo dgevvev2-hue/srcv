@@ -65,10 +65,21 @@ cfg_api_base_url = load_toml_as_dict("cfg/general_config.toml")["api_base_url"]
 api_base_url = cfg_api_base_url if cfg_api_base_url != "default" else "localhost"
 brawlers_info_file_path = "cfg/brawlers_info.json"
 
+# Pre-allocated buffers for HSV pixel counting to avoid per-call allocation.
+_hsv_buf = None
+_mask_buf = None
+
+
 def count_hsv_pixels(cv_image, low_hsv, high_hsv):
-    hsv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2HSV)
-    mask = cv2.inRange(hsv_image, low_hsv, high_hsv)
-    return cv2.countNonZero(mask)
+    global _hsv_buf, _mask_buf
+    h, w = cv_image.shape[:2]
+    # Reuse buffers when the crop size hasn't changed.
+    if _hsv_buf is None or _hsv_buf.shape[0] != h or _hsv_buf.shape[1] != w:
+        _hsv_buf = np.empty((h, w, 3), dtype=np.uint8)
+        _mask_buf = np.empty((h, w), dtype=np.uint8)
+    cv2.cvtColor(cv_image, cv2.COLOR_RGB2HSV, dst=_hsv_buf)
+    cv2.inRange(_hsv_buf, low_hsv, high_hsv, dst=_mask_buf)
+    return cv2.countNonZero(_mask_buf)
 
 def save_brawler_data(data):
     """

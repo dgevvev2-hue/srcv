@@ -10,22 +10,24 @@ class TimeManagement:
         current_time = time.time()
         self.states = {key: current_time for key in self.thresholds}
 
-    def check_time(self, check_type):
-        current_time = time.time()
+    def check_time(self, check_type, current_time=None):
+        if current_time is None:
+            current_time = time.time()
         if (current_time - self.states[check_type]) >= self.thresholds[check_type]:
-            self.states[check_type] = current_time  # Reset the timer right after checking
+            self.states[check_type] = current_time
             return True
         return False
 
-    def state_check(self):
-        return self.check_time('state_check')
+    def state_check(self, current_time=None):
+        return self.check_time('state_check', current_time)
 
-    def no_detections_check(self):
-        return self.check_time('no_detections')
+    def no_detections_check(self, current_time=None):
+        return self.check_time('no_detections', current_time)
 
-    def idle_check(self):
-        return self.check_time("idle")
+    def idle_check(self, current_time=None):
+        return self.check_time("idle", current_time)
 
-    def ago_game_started(self):
-        game_started_since = time.time() - self.states['game_start']
-        return game_started_since
+    def ago_game_started(self, current_time=None):
+        if current_time is None:
+            current_time = time.time()
+        return current_time - self.states['game_start']

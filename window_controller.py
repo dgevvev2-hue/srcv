@@ -68,6 +68,8 @@ class WindowController:
             # readers (the main loop's stale-frame check) can grab it without
             # any contention against on_frame.
             self.last_frame_time = 0.0
+            # Monotonic frame counter so callers can detect duplicate frames.
+            self._frame_seq = 0
             self.last_joystick_pos = (None, None)
             self.FRAME_STALE_TIMEOUT = 15.0
 
@@ -81,6 +83,7 @@ class WindowController:
                     with self.frame_lock:
                         self.last_frame = converted
                         self.last_frame_time = now
+                        self._frame_seq += 1
 
             self.scrcpy_client.add_listener(scrcpy.EVENT_FRAME, on_frame)
             self.scrcpy_client.start(threaded=True)
@@ -92,6 +95,8 @@ class WindowController:
         self.are_we_moving = False
         self.PID_JOYSTICK = 1  # ID for WASD movement
         self.PID_ATTACK = 2  # ID for clicks/attacks
+        # Pre-scaled key coordinates (populated on first screenshot)
+        self._scaled_key_coords = None
         self.check_if_brawl_stars_crashed_timer = load_toml_as_dict("cfg/time_tresholds.toml")["check_if_brawl_stars_crashed"]
         self.time_since_checked_if_brawl_stars_crashed = time.time()
 
@@ -161,6 +166,11 @@ class WindowController:
             self.height_ratio = self.height / brawl_stars_height
             self.joystick_x, self.joystick_y = 220 * self.width_ratio, 870 * self.height_ratio
             self.scale_factor = min(self.width_ratio, self.height_ratio)
+            # Pre-scale all key coordinates once.
+            self._scaled_key_coords = {
+                k: (x * self.width_ratio, y * self.height_ratio)
+                for k, (x, y) in key_coords_dict.items()
+            }
 
         return frame
     def touch_down(self, x, y, pointer_id=0):
@@ -219,9 +229,14 @@ class WindowController:
     def press_key(self, key, delay=0.05, touch_up=True, touch_down=True):
         if key not in key_coords_dict:
             return
-        x, y = key_coords_dict[key]
-        target_x = x * self.width_ratio
-        target_y = y * self.height_ratio
+        # Use pre-scaled coordinates to avoid per-call multiplication.
+        scaled = self._scaled_key_coords
+        if scaled is not None and key in scaled:
+            target_x, target_y = scaled[key]
+        else:
+            x, y = key_coords_dict[key]
+            target_x = x * self.width_ratio
+            target_y = y * self.height_ratio
         self.click(target_x, target_y, delay, touch_up=touch_up, touch_down=touch_down)
 
     def swipe(self, start_x, start_y, end_x, end_y, duration=0.2):
