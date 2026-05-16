@@ -189,8 +189,21 @@ class Play(Movement):
         self.entity_detection_confidence = bot_config["entity_detection_confidence"]
         self.time_since_holding_attack = None
         self.seconds_to_hold_attack_after_reaching_max = load_toml_as_dict("cfg/bot_config.toml")["seconds_to_hold_attack_after_reaching_max"]
-        # Thread pool for running entity + tile detection in parallel.
-        self._inference_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="infer")
+        # Parallel inference is only safe on CPU.  GPU providers like
+        # DirectML, CUDA, and TensorRT can crash when two sessions run
+        # concurrently on different threads.
+        _gpu_providers = {
+            "DmlExecutionProvider", "CUDAExecutionProvider",
+            "TensorrtExecutionProvider",
+        }
+        self._parallel_inference = (
+            self.Detect_main_info.device not in _gpu_providers
+            and self.Detect_tile_detector.device not in _gpu_providers
+        )
+        if self._parallel_inference:
+            self._inference_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="infer")
+        else:
+            self._inference_pool = None
         # Cached area scale value (invalidated when resolution changes).
         self._cached_area_scale = None
         self._cached_area_scale_wr = None
@@ -608,12 +621,17 @@ class Play(Movement):
             )
 
             if need_walls:
-                # Run entity and tile detection in parallel on separate threads
-                # so both ONNX sessions can overlap compute.
-                entity_future = self._inference_pool.submit(self.get_main_data, frame)
-                tile_future = self._inference_pool.submit(self.get_tile_data, frame)
-                data = entity_future.result()
-                tile_data = tile_future.result()
+                if self._parallel_inference:
+                    # Run entity and tile detection in parallel on separate
+                    # threads so both ONNX sessions can overlap compute.
+                    entity_future = self._inference_pool.submit(self.get_main_data, frame)
+                    tile_future = self._inference_pool.submit(self.get_tile_data, frame)
+                    data = entity_future.result()
+                    tile_data = tile_future.result()
+                else:
+                    # Sequential fallback for GPU providers.
+                    data = self.get_main_data(frame)
+                    tile_data = self.get_tile_data(frame)
                 walls = self.process_tile_data(tile_data)
                 self.time_since_walls_checked = current_time
                 self.last_walls_data = walls
