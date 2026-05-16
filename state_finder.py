@@ -61,10 +61,13 @@ def load_template(image_path, width, height):
 
 def _crop_for_region(image, region):
     height, width = image.shape[:2]
-    key = (width, height, region)
+    # ``region`` arrives from TOML as a list (unhashable); convert once so we
+    # can use it as a dict key.
+    region_key = tuple(region)
+    key = (width, height, region_key)
     rect = _cached_regions.get(key)
     if rect is None:
-        orig_x, orig_y, orig_width, orig_height = region
+        orig_x, orig_y, orig_width, orig_height = region_key
         width_ratio = width / orig_screen_width
         height_ratio = height / orig_screen_height
         new_x = int(orig_x * width_ratio)
